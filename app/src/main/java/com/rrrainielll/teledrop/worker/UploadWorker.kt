@@ -15,6 +15,7 @@ import com.rrrainielll.teledrop.TeleDropApp
 import com.rrrainielll.teledrop.data.db.UploadedMediaEntity
 import com.rrrainielll.teledrop.data.model.MediaType
 import com.rrrainielll.teledrop.utils.FileHashUtil
+import com.rrrainielll.teledrop.utils.ProgressRequestBody
 import kotlinx.coroutines.flow.first
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -32,6 +33,11 @@ class UploadWorker(
 
     companion object {
         const val NOTIFICATION_ID = 1001
+        
+        // Telegram API file size limits
+        const val MAX_PHOTO_SIZE = 10L * 1024 * 1024  // 10MB
+        const val MAX_VIDEO_SIZE = 50L * 1024 * 1024  // 50MB
+        const val MAX_DOCUMENT_SIZE = 50L * 1024 * 1024  // 50MB
         
         // Input Data Keys
         const val KEY_URIS = "key_uris" // Array of String (URIs)
@@ -129,7 +135,7 @@ class UploadWorker(
                 // Ignore if can't update foreground
             }
 
-            try {
+
                 // Calculate checksum if not already available
                 val checksum = file.checksum ?: FileHashUtil.calculateMD5(applicationContext, file.uri)
                 
@@ -147,57 +153,144 @@ class UploadWorker(
                     return@forEachIndexed
                 }
                 
+                // Validate file size
+                val validation = validateFileSize(file)
+                val sendAsDocument = when (validation) {
+                    is ValidationResult.TooLarge -> {
+                        Log.w("UploadWorker", "Skipping ${file.name}: too large (${formatFileSize(file.size)}, max: ${formatFileSize(validation.maxSize)})")
+                        skippedCount++
+                        try {
+                            setForegroundAsync(createForegroundInfo(
+                                index + 1, total, file.name, 
+                                "Skipped (too large: ${formatFileSize(file.size)})"
+                            ))
+                        } catch (e: Exception) { }
+                        return@forEachIndexed
+                    }
+                    is ValidationResult.SendAsDocument -> {
+                        Log.i("UploadWorker", "Sending ${file.name} as document (${formatFileSize(file.size)})")
+                        true
+                    }
+                    ValidationResult.Valid -> false
+                }
+                
                 // Update Notification - Uploading phase
                 try {
                     setForegroundAsync(createForegroundInfo(index + 1, total, file.name, "Uploading"))
                 } catch (e: Exception) { }
                 
-                // Copy stream to temp file because Retrofit needs a File or RequestBody from stream
-                val tempFile = createTempFileFromUri(file.uri) ?: return@forEachIndexed
+                // Declare tempFile outside try block for finally cleanup
+                var tempFile: File? = null
+                
+                try {
+                    // Copy stream to temp file because Retrofit needs a File or RequestBody from stream
+                    tempFile = createTempFileFromUri(file.uri) ?: return@forEachIndexed
 
-                // Extract metadata for caption
-                val caption = extractMetadata(file.uri, file.name)
-                val captionPart = caption?.toRequestBody(MultipartBody.FORM)
+                    // Extract metadata for caption
+                    val caption = extractMetadata(file.uri, file.name)
+                    val captionPart = caption?.toRequestBody(MultipartBody.FORM)
 
-                val requestFile = tempFile.asRequestBody(null)
-                val body = MultipartBody.Part.createFormData(
-                    if (file.type == MediaType.VIDEO) "video" else "photo",
-                    file.name ?: "file",
-                    requestFile
-                )
-                val chatIdPart = chatId.toRequestBody(MultipartBody.FORM)
-
-                val response = if (file.type == MediaType.VIDEO) {
-                    val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "sendVideo")
-                    api.sendVideo(url, chatIdPart, body, captionPart)
-                } else {
-                    val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "sendPhoto")
-                    api.sendPhoto(url, chatIdPart, body, captionPart)
-                }
-
-                if (response.isSuccessful) {
-                    uploadedCount++
-                    // Mark as Uploaded with checksum
-                    database.uploadedMediaDao().insertUploaded(
-                        UploadedMediaEntity(
-                            mediaId = if (file.mediaId != 0L) file.mediaId else System.currentTimeMillis(),
-                            contentUri = file.uri.toString(),
-                            checksum = checksum,
-                            size = file.size
-                        )
+                    // Wrap request body with progress tracking
+                    val requestFile = tempFile.asRequestBody(null)
+                    val fileSize = tempFile.length()
+                    val progressRequestBody = ProgressRequestBody(requestFile) { uploadedBytes, totalBytes, percent, speedBps, etaSeconds ->
+                        // Update progress data with detailed upload information
+                        try {
+                            setProgressAsync(workDataOf(
+                                "current" to index + 1,
+                                "total" to total,
+                                "filename" to (file.name ?: "File"),
+                                "uri" to file.uri.toString(),
+                                "uploadPercent" to percent,
+                                "uploadedBytes" to uploadedBytes,
+                                "totalBytes" to totalBytes,
+                                "uploadSpeedBps" to speedBps,
+                                "etaSeconds" to etaSeconds
+                            ))
+                            
+                            // Also update notification with detailed progress
+                            setForegroundAsync(createForegroundInfo(
+                                current = index + 1,
+                                total = total,
+                                fileName = file.name,
+                                status = "Uploading",
+                                uploadPercent = percent,
+                                uploadedBytes = uploadedBytes,
+                                totalBytes = totalBytes,
+                                uploadSpeedBps = speedBps,
+                                etaSeconds = etaSeconds
+                            ))
+                        } catch (e: Exception) {
+                            // Ignore if progress update fails
+                        }
+                    }
+                    
+                    // Determine part name based on file type and size
+                    val partName = when {
+                        sendAsDocument -> "document"
+                        file.type == MediaType.VIDEO -> "video"
+                        else -> "photo"
+                    }
+                    
+                    val body = MultipartBody.Part.createFormData(
+                        partName,
+                        file.name ?: "file",
+                        progressRequestBody
                     )
-                } else {
-                    Log.e("UploadWorker", "Failed: ${response.errorBody()?.string()}")
+                    val chatIdPart = chatId.toRequestBody(MultipartBody.FORM)
+
+                    val response = when {
+                        sendAsDocument -> {
+                            val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "sendDocument")
+                            api.sendDocument(url, chatIdPart, body, captionPart)
+                        }
+                        file.type == MediaType.VIDEO -> {
+                            val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "sendVideo")
+                            api.sendVideo(url, chatIdPart, body, captionPart)
+                        }
+                        else -> {
+                            val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "sendPhoto")
+                            api.sendPhoto(url, chatIdPart, body, captionPart)
+                        }
+                    }
+
+                    if (response.isSuccessful) {
+                        uploadedCount++
+                        // Mark as Uploaded with checksum
+                        database.uploadedMediaDao().insertUploaded(
+                            UploadedMediaEntity(
+                                mediaId = if (file.mediaId != 0L) file.mediaId else System.currentTimeMillis(),
+                                contentUri = file.uri.toString(),
+                                checksum = checksum,
+                                size = file.size
+                            )
+                        )
+                    } else {
+                        Log.e("UploadWorker", "Upload failed: ${response.errorBody()?.string()}")
+                        skippedCount++
+                    }
+
+                } catch (e: OutOfMemoryError) {
+                    Log.e("UploadWorker", "Out of memory uploading ${file.name}", e)
+                    skippedCount++
+                } catch (e: java.net.SocketTimeoutException) {
+                    Log.e("UploadWorker", "Timeout uploading ${file.name}", e)
+                    skippedCount++
+                } catch (e: java.io.IOException) {
+                    Log.e("UploadWorker", "IO error uploading ${file.name}: ${e.message}", e)
+                    skippedCount++
+                } catch (e: Exception) {
+                    Log.e("UploadWorker", "Error uploading ${file.name}: ${e.message}", e)
+                    skippedCount++
+                } finally {
+                    // Ensure temp file is always deleted
+                    try {
+                        tempFile?.delete()
+                    } catch (e: Exception) {
+                        Log.w("UploadWorker", "Failed to delete temp file", e)
+                    }
                 }
-
-                // Cleanup
-                tempFile.delete()
-
-            } catch (e: Exception) {
-                Log.e("UploadWorker", "Error uploading ${file.name}", e)
-                // Continue to next file
             }
-        }
         
         Log.i("UploadWorker", "Sync complete: $uploadedCount uploaded, $skippedCount skipped")
 
@@ -205,20 +298,74 @@ class UploadWorker(
         return Result.success()
     }
 
-    private fun createForegroundInfo(current: Int, total: Int, fileName: String?, status: String? = null): ForegroundInfo {
+    private fun createForegroundInfo(
+        current: Int, 
+        total: Int, 
+        fileName: String?, 
+        status: String? = null,
+        uploadPercent: Int? = null,
+        uploadedBytes: Long? = null,
+        totalBytes: Long? = null,
+        uploadSpeedBps: Long? = null,
+        etaSeconds: Long? = null
+    ): ForegroundInfo {
         val title = "TeleDrop Syncing"
+        
         val text = if (current > 0) {
-            val statusPrefix = status?.let { "$it: " } ?: ""
-            "${statusPrefix}$current of $total${if (fileName != null) " - $fileName" else ""}"
+            buildString {
+                // File counter
+                append("$current of $total")
+                if (fileName != null) {
+                    append(" - $fileName")
+                }
+                
+                // Add detailed progress if available
+                if (uploadPercent != null && uploadPercent > 0) {
+                    append(" ($uploadPercent%)")
+                }
+                
+                // Status prefix (Uploading, Checking, etc.)
+                if (status != null && status != "Uploading") {
+                    append(" - $status")
+                }
+            }
         } else {
             "Starting upload..."
         }
-        val progress = if (total > 0) ((current.toFloat() / total.toFloat()) * 100).toInt() else 0
+        
+        // Build detailed subtext with speed and ETA
+        val subText = if (uploadedBytes != null && totalBytes != null && totalBytes > 0) {
+            buildString {
+                append("${formatFileSize(uploadedBytes)} / ${formatFileSize(totalBytes)}")
+                
+                if (uploadSpeedBps != null && uploadSpeedBps > 0) {
+                    append(" • ${formatSpeed(uploadSpeedBps)}")
+                }
+                
+                if (etaSeconds != null && etaSeconds > 0) {
+                    append(" • ${formatDuration(etaSeconds)} left")
+                }
+            }
+        } else null
+        
+        // Progress bar shows current file progress if available, otherwise overall progress
+        val progress = if (uploadPercent != null && uploadPercent > 0) {
+            uploadPercent
+        } else if (total > 0) {
+            ((current.toFloat() / total.toFloat()) * 100).toInt()
+        } else {
+            0
+        }
         
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(applicationContext, TeleDropApp.UPLOAD_CHANNEL_ID)
                 .setContentTitle(title)
                 .setContentText(text)
+                .apply {
+                    if (subText != null) {
+                        setSubText(subText)
+                    }
+                }
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setProgress(100, progress, false)
                 .setOngoing(true)
@@ -228,6 +375,11 @@ class UploadWorker(
             Notification.Builder(applicationContext)
                 .setContentTitle(title)
                 .setContentText(text)
+                .apply {
+                    if (subText != null) {
+                        setSubText(subText)
+                    }
+                }
                 .setSmallIcon(android.R.drawable.stat_sys_upload)
                 .setProgress(100, progress, false)
                 .build()
@@ -353,4 +505,66 @@ class UploadWorker(
             request
         )
     }
+    
+    // Helper function to format file size
+    private fun formatFileSize(bytes: Long): String {
+        return when {
+            bytes < 1024 -> "$bytes B"
+            bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+            bytes < 1024 * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+            else -> "%.2f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+        }
+    }
+    
+    // Helper function to format upload speed
+    private fun formatSpeed(bytesPerSecond: Long): String {
+        return when {
+            bytesPerSecond < 1024 -> "$bytesPerSecond B/s"
+            bytesPerSecond < 1024 * 1024 -> "%.1f KB/s".format(bytesPerSecond / 1024.0)
+            else -> "%.1f MB/s".format(bytesPerSecond / (1024.0 * 1024.0))
+        }
+    }
+    
+    // Helper function to format duration
+    private fun formatDuration(seconds: Long): String {
+        return when {
+            seconds < 60 -> "${seconds}s"
+            seconds < 3600 -> {
+                val mins = seconds / 60
+                val secs = seconds % 60
+                if (secs == 0L) "${mins}m" else "${mins}m ${secs}s"
+            }
+            else -> {
+                val hours = seconds / 3600
+                val mins = (seconds % 3600) / 60
+                if (mins == 0L) "${hours}h" else "${hours}h ${mins}m"
+            }
+        }
+    }
+    
+    // Validate file size against Telegram API limits
+    private fun validateFileSize(file: PendingFile): ValidationResult {
+        return when (file.type) {
+            MediaType.PHOTO -> {
+                when {
+                    file.size <= MAX_PHOTO_SIZE -> ValidationResult.Valid
+                    file.size <= MAX_DOCUMENT_SIZE -> ValidationResult.SendAsDocument
+                    else -> ValidationResult.TooLarge("Photo", MAX_DOCUMENT_SIZE)
+                }
+            }
+            MediaType.VIDEO -> {
+                when {
+                    file.size <= MAX_VIDEO_SIZE -> ValidationResult.Valid
+                    else -> ValidationResult.TooLarge("Video", MAX_VIDEO_SIZE)
+                }
+            }
+        }
+    }
+}
+
+// Sealed class for file validation results
+sealed class ValidationResult {
+    object Valid : ValidationResult()
+    object SendAsDocument : ValidationResult()
+    data class TooLarge(val type: String, val maxSize: Long) : ValidationResult()
 }

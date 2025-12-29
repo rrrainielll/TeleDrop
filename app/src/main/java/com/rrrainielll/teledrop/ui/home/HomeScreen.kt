@@ -44,6 +44,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.work.WorkInfo
 import coil.compose.AsyncImage
 import com.rrrainielll.teledrop.R
+import com.rrrainielll.teledrop.ui.components.SquircleProgressIndicator
 import com.rrrainielll.teledrop.ui.folder.FolderSelectionScreen
 import com.rrrainielll.teledrop.ui.folder.FolderViewModel
 
@@ -119,24 +120,68 @@ fun HomeScreen(
                                 val total = progress?.getInt("total", 0) ?: 0
                                 val filename = progress?.getString("filename")
                                 val uriString = progress?.getString("uri")
+                                val uploadPercent = progress?.getInt("uploadPercent", 0) ?: 0
+                                val uploadedBytes = progress?.getLong("uploadedBytes", 0L) ?: 0L
+                                val totalBytes = progress?.getLong("totalBytes", 0L) ?: 0L
+                                val uploadSpeedBps = progress?.getLong("uploadSpeedBps", 0L) ?: 0L
+                                val etaSeconds = progress?.getLong("etaSeconds", 0L) ?: 0L
                                 val progressValue = if (total > 0) current.toFloat() / total.toFloat() else 0f
 
-                                if (uriString != null) {
-                                    AsyncImage(
-                                        model = uriString,
-                                        contentDescription = "Uploading Image",
-                                        modifier = Modifier
-                                            .size(120.dp)
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(56.dp),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        strokeWidth = 5.dp
-                                    )
+                                // Thumbnail with squircle progress around it
+                                val squircleCornerRadius = 32.dp // ~27% of 120dp for squircle effect
+                                
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.size(140.dp)
+                                ) {
+                                    // Squircle progress indicator (outline around squircle)
+                                    if (uploadPercent > 0) {
+                                        SquircleProgressIndicator(
+                                            progress = uploadPercent / 100f,
+                                            modifier = Modifier.size(140.dp),
+                                            cornerRadius = squircleCornerRadius + 10.dp, // Slightly larger for outline effect
+                                            strokeWidth = 6.dp,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                    }
+                                    
+                                    // Thumbnail image in squircle shape or loading indicator
+                                    if (uriString != null) {
+                                        AsyncImage(
+                                            model = uriString,
+                                            contentDescription = "Uploading Image",
+                                            modifier = Modifier
+                                                .size(120.dp)
+                                                .clip(RoundedCornerShape(squircleCornerRadius))
+                                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(56.dp),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            strokeWidth = 5.dp
+                                        )
+                                    }
+                                    
+                                    // Percentage text overlay with matching squircle shape
+                                    if (uploadPercent > 0 && uriString != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(120.dp)
+                                                .clip(RoundedCornerShape(squircleCornerRadius))
+                                                .background(Color.Black.copy(alpha = 0.5f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "$uploadPercent%",
+                                                style = MaterialTheme.typography.headlineMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
                                 
@@ -158,6 +203,52 @@ fun HomeScreen(
                                         maxLines = 1,
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    
+                                    // Show detailed progress if available
+                                    if (uploadPercent > 0 || totalBytes > 0) {
+                                        // Uploaded bytes / Total bytes
+                                        if (totalBytes > 0) {
+                                            Text(
+                                                text = "${formatFileSize(uploadedBytes)} / ${formatFileSize(totalBytes)}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                        }
+                                        
+                                        // Speed and ETA
+                                        if (uploadSpeedBps > 0 || etaSeconds > 0) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                if (uploadSpeedBps > 0) {
+                                                    Text(
+                                                        text = formatSpeed(uploadSpeedBps),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                if (uploadSpeedBps > 0 && etaSeconds > 0) {
+                                                    Text(
+                                                        text = " • ",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                if (etaSeconds > 0) {
+                                                    Text(
+                                                        text = "${formatDuration(etaSeconds)} left",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                     Spacer(modifier = Modifier.height(16.dp))
                                 } else {
                                     Text(
@@ -186,13 +277,13 @@ fun HomeScreen(
                             } else {
                                 Box(
                                     modifier = Modifier
-                                        .size(64.dp)
-                                        .clip(RoundedCornerShape(32.dp))
+                                        .size(80.dp)
+                                        .clip(RoundedCornerShape(24.dp))
                                         .background(
                                             if (lastWork != null && lastWork.state == WorkInfo.State.SUCCEEDED)
                                                 MaterialTheme.colorScheme.tertiaryContainer
                                             else
-                                                MaterialTheme.colorScheme.surfaceVariant
+                                                MaterialTheme.colorScheme.primaryContainer
                                         ),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -200,14 +291,14 @@ fun HomeScreen(
                                         Icon(
                                             imageVector = Icons.Default.CheckCircle,
                                             contentDescription = null,
-                                            modifier = Modifier.size(36.dp),
+                                            modifier = Modifier.size(40.dp),
                                             tint = MaterialTheme.colorScheme.tertiary
                                         )
                                     } else {
                                         Icon(
-                                            painter = painterResource(id = R.drawable.ic_launcher_background),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(48.dp),
+                                            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                                            contentDescription = "TeleDrop Logo",
+                                            modifier = Modifier.size(80.dp),
                                             tint = Color.Unspecified
                                         )
                                     }
@@ -297,6 +388,42 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+// Helper function to format file size
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+        bytes < 1024 * 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+        else -> "%.2f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
+// Helper function to format upload speed
+private fun formatSpeed(bytesPerSecond: Long): String {
+    return when {
+        bytesPerSecond < 1024 -> "$bytesPerSecond B/s"
+        bytesPerSecond < 1024 * 1024 -> "%.1f KB/s".format(bytesPerSecond / 1024.0)
+        else -> "%.1f MB/s".format(bytesPerSecond / (1024.0 * 1024.0))
+    }
+}
+
+// Helper function to format duration
+private fun formatDuration(seconds: Long): String {
+    return when {
+        seconds < 60 -> "${seconds}s"
+        seconds < 3600 -> {
+            val mins = seconds / 60
+            val secs = seconds % 60
+            if (secs == 0L) "${mins}m" else "${mins}m ${secs}s"
+        }
+        else -> {
+            val hours = seconds / 3600
+            val mins = (seconds % 3600) / 60
+            if (mins == 0L) "${hours}h" else "${hours}h ${mins}m"
         }
     }
 }
