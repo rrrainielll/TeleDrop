@@ -14,6 +14,7 @@ import androidx.work.workDataOf
 import com.rrrainielll.teledrop.TeleDropApp
 import com.rrrainielll.teledrop.data.db.UploadedMediaEntity
 import com.rrrainielll.teledrop.data.model.MediaType
+import com.rrrainielll.teledrop.utils.FileHashUtil
 import kotlinx.coroutines.flow.first
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -69,15 +70,23 @@ class UploadWorker(
             folders.forEach { folder ->
                 val mediaList = app.mediaRepository.getMediaInFolder(folder.path)
                 mediaList.forEach { media ->
-                    // Check if uploaded (by ID or URI)
+                    // Calculate checksum for content-based duplicate detection
+                    val checksum = FileHashUtil.calculateMD5(applicationContext, media.uri)
+                    
+                    // Check if uploaded using multiple methods
+                    val isUploadedByChecksum = if (checksum != null) {
+                        database.uploadedMediaDao().isUploadedByChecksum(checksum)
+                    } else false
+                    
                     val isUploadedById = if (media.id != 0L) {
                         database.uploadedMediaDao().isUploaded(media.id)
                     } else false
                     
                     val isUploadedByUri = database.uploadedMediaDao().isUploadedByUri(media.uri.toString())
                     
-                    if (!isUploadedById && !isUploadedByUri) {
-                        filesToUpload.add(PendingFile(media.uri, media.id, media.name, media.size, media.type))
+                    // Skip if already uploaded (prioritize checksum check)
+                    if (!isUploadedByChecksum && !isUploadedById && !isUploadedByUri) {
+                        filesToUpload.add(PendingFile(media.uri, media.id, media.name, media.size, media.type, checksum))
                     }
                 }
             }
@@ -101,6 +110,9 @@ class UploadWorker(
         // 4. Start Upload Loop
         val total = filesToUpload.size
         
+        var uploadedCount = 0
+        var skippedCount = 0
+        
         filesToUpload.forEachIndexed { index, file ->
             // Update Progress
             setProgressAsync(workDataOf(
@@ -110,14 +122,36 @@ class UploadWorker(
                 "uri" to file.uri.toString()
             ))
             
-            // Update Notification
+            // Update Notification - Checking phase
             try {
-                setForegroundAsync(createForegroundInfo(index + 1, total, file.name))
+                setForegroundAsync(createForegroundInfo(index + 1, total, file.name, "Checking"))
             } catch (e: Exception) {
                 // Ignore if can't update foreground
             }
 
             try {
+                // Calculate checksum if not already available
+                val checksum = file.checksum ?: FileHashUtil.calculateMD5(applicationContext, file.uri)
+                
+                // Double-check for duplicates (in case file was uploaded during this run)
+                val isDuplicate = if (checksum != null) {
+                    database.uploadedMediaDao().isUploadedByChecksum(checksum)
+                } else false
+                
+                if (isDuplicate) {
+                    Log.d("UploadWorker", "Skipping duplicate: ${file.name} (checksum: $checksum)")
+                    skippedCount++
+                    try {
+                        setForegroundAsync(createForegroundInfo(index + 1, total, file.name, "Skipped (duplicate)"))
+                    } catch (e: Exception) { }
+                    return@forEachIndexed
+                }
+                
+                // Update Notification - Uploading phase
+                try {
+                    setForegroundAsync(createForegroundInfo(index + 1, total, file.name, "Uploading"))
+                } catch (e: Exception) { }
+                
                 // Copy stream to temp file because Retrofit needs a File or RequestBody from stream
                 val tempFile = createTempFileFromUri(file.uri) ?: return@forEachIndexed
 
@@ -142,11 +176,13 @@ class UploadWorker(
                 }
 
                 if (response.isSuccessful) {
-                    // Mark as Uploaded - use URI as fallback if mediaId is 0
+                    uploadedCount++
+                    // Mark as Uploaded with checksum
                     database.uploadedMediaDao().insertUploaded(
                         UploadedMediaEntity(
-                            mediaId = if (file.mediaId != 0L) file.mediaId else System.currentTimeMillis(), // Use timestamp as unique ID if no mediaId
+                            mediaId = if (file.mediaId != 0L) file.mediaId else System.currentTimeMillis(),
                             contentUri = file.uri.toString(),
+                            checksum = checksum,
                             size = file.size
                         )
                     )
@@ -162,15 +198,18 @@ class UploadWorker(
                 // Continue to next file
             }
         }
+        
+        Log.i("UploadWorker", "Sync complete: $uploadedCount uploaded, $skippedCount skipped")
 
         if (isAutoSync) scheduleNextAutoSync()
         return Result.success()
     }
 
-    private fun createForegroundInfo(current: Int, total: Int, fileName: String?): ForegroundInfo {
+    private fun createForegroundInfo(current: Int, total: Int, fileName: String?, status: String? = null): ForegroundInfo {
         val title = "TeleDrop Syncing"
         val text = if (current > 0) {
-            "Uploading $current of $total${if (fileName != null) ": $fileName" else ""}"
+            val statusPrefix = status?.let { "$it: " } ?: ""
+            "${statusPrefix}$current of $total${if (fileName != null) " - $fileName" else ""}"
         } else {
             "Starting upload..."
         }
@@ -291,7 +330,8 @@ class UploadWorker(
         val mediaId: Long = 0,
         val name: String? = null,
         val size: Long = 0,
-        val type: MediaType = MediaType.PHOTO
+        val type: MediaType = MediaType.PHOTO,
+        val checksum: String? = null
     )
 
     private fun scheduleNextAutoSync() {

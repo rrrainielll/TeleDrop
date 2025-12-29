@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [SyncFolderEntity::class, UploadedMediaEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,11 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "teledrop_database"
                 )
-                    // Add migrations here as schema evolves
-                    // Example: .addMigrations(MIGRATION_1_2)
-                    
-                    // Fallback to destructive migration for development
-                    // Remove this in production if you want to prevent data loss
+                    .addMigrations(MIGRATION_1_2)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
@@ -39,12 +35,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         
-        // Example migration from version 1 to 2 (for future use)
-        // val MIGRATION_1_2 = object : Migration(1, 2) {
-        //     override fun migrate(database: SupportSQLiteDatabase) {
-        //         // Example: Add a new column
-        //         // database.execSQL("ALTER TABLE sync_folders ADD COLUMN last_sync_time INTEGER DEFAULT 0 NOT NULL")
-        //     }
-        // }
+        // Migration from version 1 to 2: Add index on checksum column
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Create index on checksum column for faster duplicate detection
+                database.execSQL("CREATE INDEX IF NOT EXISTS index_uploaded_media_checksum ON uploaded_media(checksum)")
+            }
+        }
     }
 }

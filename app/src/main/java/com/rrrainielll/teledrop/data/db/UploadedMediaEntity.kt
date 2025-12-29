@@ -6,7 +6,10 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "uploaded_media",
-    indices = [Index(value = ["mediaId"], unique = true)]
+    indices = [
+        Index(value = ["mediaId"], unique = true),
+        Index(value = ["checksum"])
+    ]
 )
 data class UploadedMediaEntity(
     @PrimaryKey(autoGenerate = true)

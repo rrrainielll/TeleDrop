@@ -59,6 +59,7 @@ Building this project requires Android Studio Ladybug or a newer version.
 3.  Sync Gradle project files.
 4.  Execute the build or run command for the target emulator or device.
 
+
 ## Contributing
 
 Contributions are permitted. Improvement suggestions or feature additions can be proposed via the issue tracker or pull requests.

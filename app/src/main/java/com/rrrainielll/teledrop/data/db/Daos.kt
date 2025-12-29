@@ -27,6 +27,12 @@ interface UploadedMediaDao {
     
     @Query("SELECT EXISTS(SELECT 1 FROM uploaded_media WHERE contentUri = :contentUri)")
     suspend fun isUploadedByUri(contentUri: String): Boolean
+    
+    @Query("SELECT EXISTS(SELECT 1 FROM uploaded_media WHERE checksum = :checksum AND checksum IS NOT NULL)")
+    suspend fun isUploadedByChecksum(checksum: String): Boolean
+    
+    @Query("SELECT * FROM uploaded_media ORDER BY uploadDate DESC")
+    suspend fun getAllUploadedMedia(): List<UploadedMediaEntity>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertUploaded(media: UploadedMediaEntity)
