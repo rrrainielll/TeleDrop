@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -37,7 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun FolderSelectionScreen(
     viewModel: FolderViewModel,
@@ -50,18 +51,27 @@ fun FolderSelectionScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Select Folders to Sync") }
+            androidx.compose.material3.CenterAlignedTopAppBar(
+                title = { 
+                    Text(
+                        "Select Folders",
+                        style = MaterialTheme.typography.titleLarge
+                    ) 
+                }
             )
         },
         floatingActionButton = {
             if (hasPermissions && !isLoading) {
-                androidx.compose.material3.FloatingActionButton(
-                    onClick = onPickFolder
+                androidx.compose.material3.LargeFloatingActionButton(
+                    onClick = onPickFolder,
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    shape = MaterialTheme.shapes.large
                 ) {
                     Icon(
                         imageVector = androidx.compose.material.icons.Icons.Default.Add,
-                        contentDescription = "Add Custom Folder"
+                        contentDescription = "Add Custom Folder",
+                        modifier = Modifier.size(36.dp)
                     )
                 }
             }
@@ -150,11 +160,21 @@ fun FolderSelectionScreen(
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(folders) { folder ->
+                    items(items = folders, key = { it.path }) { folder ->
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-                            shape = RoundedCornerShape(16.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItemPlacement(
+                                    animationSpec = androidx.compose.animation.core.spring(
+                                        dampingRatio = 0.8f,
+                                        stiffness = 300f
+                                    )
+                                ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            shape = MaterialTheme.shapes.large,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                            )
                         ) {
                             Row(
                                 modifier = Modifier

@@ -30,6 +30,9 @@ class SyncTileService : TileService() {
 
         // Reset state to ensure it's clickable again
         qsTile.state = Tile.STATE_ACTIVE
+        // Use AVD if possible, though QS icon support for AVD running might be limited.
+        // We set the icon to the AVD.
+        qsTile.icon = android.graphics.drawable.Icon.createWithResource(this, com.rrrainielll.teledrop.R.drawable.avd_sync)
         qsTile.updateTile()
     }
 
@@ -37,6 +40,7 @@ class SyncTileService : TileService() {
         super.onStartListening()
         qsTile.state = Tile.STATE_INACTIVE
         qsTile.label = "TeleDrop Sync"
+        qsTile.icon = android.graphics.drawable.Icon.createWithResource(this, com.rrrainielll.teledrop.R.drawable.avd_sync)
         qsTile.updateTile()
     }
 }

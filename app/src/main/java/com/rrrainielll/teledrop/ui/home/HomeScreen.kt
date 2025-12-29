@@ -29,6 +29,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import com.rrrainielll.teledrop.ui.theme.Motion
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
@@ -46,9 +56,13 @@ import androidx.work.WorkInfo
 import coil.compose.AsyncImage
 import com.rrrainielll.teledrop.R
 import com.rrrainielll.teledrop.ui.components.SquircleProgressIndicator
+import com.rrrainielll.teledrop.ui.components.WavyProgressIndicator
 import com.rrrainielll.teledrop.ui.folder.FolderSelectionScreen
 import com.rrrainielll.teledrop.ui.folder.FolderViewModel
 
+import androidx.compose.animation.ExperimentalAnimationApi
+
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -106,7 +120,7 @@ fun HomeScreen(
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
-                        shape = RoundedCornerShape(20.dp)
+                        shape = MaterialTheme.shapes.large
                     ) {
                         Column(
                             modifier = Modifier
@@ -115,8 +129,21 @@ fun HomeScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                        if (isSyncing) {
-                                val progress = lastWork?.progress
+                            AnimatedContent(
+                                targetState = isSyncing,
+                                transitionSpec = {
+                                    (fadeIn(animationSpec = tween(400)) + slideInVertically(animationSpec = tween(400)) { it / 2 })
+                                        .togetherWith(fadeOut(animationSpec = tween(200)) + slideOutVertically(animationSpec = tween(200)) { -it / 2 })
+                                },
+                                label = "Status Animation"
+                            ) { syncing ->
+                                if (syncing) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        val progress = lastWork?.progress
                                 val current = progress?.getInt("current", 0) ?: 0
                                 val total = progress?.getInt("total", 0) ?: 0
                                 val filename = progress?.getString("filename")
@@ -126,7 +153,11 @@ fun HomeScreen(
                                 val totalBytes = progress?.getLong("totalBytes", 0L) ?: 0L
                                 val uploadSpeedBps = progress?.getLong("uploadSpeedBps", 0L) ?: 0L
                                 val etaSeconds = progress?.getLong("etaSeconds", 0L) ?: 0L
-                                val progressValue = if (total > 0) current.toFloat() / total.toFloat() else 0f
+                                val progressValue = if (totalBytes > 0) {
+                                    uploadedBytes.toFloat() / totalBytes.toFloat()
+                                } else if (total > 0) {
+                                    current.toFloat() / total.toFloat()
+                                } else 0f
 
                                 // Thumbnail with squircle progress around it
                                 val squircleCornerRadius = 32.dp // ~27% of 120dp for squircle effect
@@ -136,9 +167,15 @@ fun HomeScreen(
                                     modifier = Modifier.size(140.dp)
                                 ) {
                                     // Squircle progress indicator (outline around squircle)
+                                    val animatedProgress by animateFloatAsState(
+                                        targetValue = progressValue,
+                                        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 400f),
+                                        label = "Progress Animation"
+                                    )
+                                    
                                     if (uploadPercent > 0) {
                                         SquircleProgressIndicator(
-                                            progress = uploadPercent / 100f,
+                                            progress = animatedProgress,
                                             modifier = Modifier.size(140.dp),
                                             cornerRadius = squircleCornerRadius + 10.dp, // Slightly larger for outline effect
                                             strokeWidth = 6.dp,
@@ -262,21 +299,33 @@ fun HomeScreen(
                                 }
 
                                 if (total > 0) {
-                                    androidx.compose.material3.LinearProgressIndicator(
-                                        progress = progressValue,
-                                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                    val linearProgress by animateFloatAsState(
+                                        targetValue = progressValue,
+                                        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 400f),
+                                        label = "Linear Progress"
+                                    )
+                                    WavyProgressIndicator(
+                                        progress = linearProgress,
+                                        modifier = Modifier.fillMaxWidth().height(24.dp),
                                         color = MaterialTheme.colorScheme.primary,
                                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                                     )
                                 } else {
-                                    androidx.compose.material3.LinearProgressIndicator(
-                                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                    WavyProgressIndicator(
+                                        progress = 0f,
+                                        modifier = Modifier.fillMaxWidth().height(24.dp),
                                         color = MaterialTheme.colorScheme.primary,
                                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                                     )
                                 }
-                            } else {
-                                Box(
+                            }
+                        } else {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Box(
                                     modifier = Modifier
                                         .size(80.dp)
                                         .clip(RoundedCornerShape(24.dp))
@@ -338,6 +387,8 @@ fun HomeScreen(
                             }
                         }
                     }
+                }
+            }
                     
                     Spacer(modifier = Modifier.height(48.dp))
                     
@@ -352,7 +403,7 @@ fun HomeScreen(
                                 .fillMaxWidth()
                                 .height(56.dp),
                             enabled = !isSyncing,
-                            shape = RoundedCornerShape(16.dp)
+                            shape = MaterialTheme.shapes.extraLarge
                         ) {
                             Icon(
                                 Icons.Default.Refresh,
@@ -372,7 +423,7 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
-                            shape = RoundedCornerShape(16.dp)
+                            shape = MaterialTheme.shapes.extraLarge
                         ) {
                             Icon(
                                 Icons.Default.Settings,
@@ -413,7 +464,7 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = MaterialTheme.shapes.extraLarge,
                             colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.tertiary,
                                 contentColor = MaterialTheme.colorScheme.onTertiary

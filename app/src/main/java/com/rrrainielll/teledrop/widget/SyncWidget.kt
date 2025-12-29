@@ -46,6 +46,9 @@ class SyncWidget : AppWidgetProvider() {
 
             val views = RemoteViews(context.packageName, R.layout.widget_sync)
             views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
+            
+            // Set the icon to the animated vector drawable
+            views.setImageViewResource(R.id.widget_icon, R.drawable.avd_sync)
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }

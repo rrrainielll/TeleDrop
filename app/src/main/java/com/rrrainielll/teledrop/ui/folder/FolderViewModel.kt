@@ -59,11 +59,20 @@ class FolderViewModel(
     fun toggleFolderSync(folder: SyncFolderEntity, isEnabled: Boolean) {
         viewModelScope.launch {
             val updatedFolder = folder.copy(isAutoSync = isEnabled)
-            database.syncFolderDao().insertFolder(updatedFolder)
             
-            // Update local state
+            // Optimistic update: Update local state immediately
             _folders.value = _folders.value.map { 
                 if (it.path == folder.path) updatedFolder else it 
+            }
+
+            try {
+                database.syncFolderDao().insertFolder(updatedFolder)
+            } catch (e: Exception) {
+                // Revert on failure
+                e.printStackTrace()
+                _folders.value = _folders.value.map { 
+                    if (it.path == folder.path) folder else it 
+                }
             }
         }
     }

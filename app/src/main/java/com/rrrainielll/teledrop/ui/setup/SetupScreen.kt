@@ -180,7 +180,7 @@ fun SetupScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                shape = RoundedCornerShape(16.dp)
+                shape = MaterialTheme.shapes.extraLarge
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -192,7 +192,7 @@ fun SetupScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                shape = RoundedCornerShape(16.dp),
+                shape = MaterialTheme.shapes.extraLarge,
                 trailingIcon = {
                     TextButton(onClick = { 
                         focusManager.clearFocus()
@@ -239,7 +239,7 @@ fun SetupScreen(
                         .fillMaxWidth()
                         .height(56.dp),
                     enabled = uiState.botToken.isNotBlank(),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = MaterialTheme.shapes.extraLarge
                 ) {
                     Text(
                         "Connect",
@@ -261,7 +261,7 @@ fun TutorialCard(onClose: () -> Unit) {
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        shape = RoundedCornerShape(20.dp)
+        shape = MaterialTheme.shapes.large
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
             Text(
