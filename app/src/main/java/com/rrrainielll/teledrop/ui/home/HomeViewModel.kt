@@ -39,6 +39,51 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         workManager.enqueue(syncRequest)
     }
 
+    fun uploadSelectedMedia(uris: List<android.net.Uri>) {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+            
+        val uploadRequestBuilder = OneTimeWorkRequestBuilder<UploadWorker>()
+            .setConstraints(constraints)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .addTag("manual_upload_work")
+            .addTag("sync_work")
+
+        // Data limit is 10KB. If we have many URIs, pass via file.
+        // Assuming ~100 chars per URI, 50 URIs = 5KB. Safety limit: 30.
+        if (uris.size > 30) {
+            try {
+                val cacheDir = getApplication<Application>().cacheDir
+                val file = java.io.File.createTempFile("selected_media", ".txt", cacheDir)
+                file.printWriter().use { out ->
+                    uris.forEach { out.println(it.toString()) }
+                }
+                
+                uploadRequestBuilder.setInputData(workDataOf(
+                    UploadWorker.KEY_URI_LIST_FILE to file.absolutePath,
+                    UploadWorker.KEY_IS_AUTO_SYNC to false
+                ))
+            } catch (e: Exception) {
+                
+                // Fallback to array if file creation fails (risky but better than nothing)
+                val uriStrings = uris.map { it.toString() }.toTypedArray()
+                uploadRequestBuilder.setInputData(workDataOf(
+                    UploadWorker.KEY_URIS to uriStrings,
+                    UploadWorker.KEY_IS_AUTO_SYNC to false
+                ))
+            }
+        } else {
+            val uriStrings = uris.map { it.toString() }.toTypedArray()
+            uploadRequestBuilder.setInputData(workDataOf(
+                UploadWorker.KEY_URIS to uriStrings,
+                UploadWorker.KEY_IS_AUTO_SYNC to false
+            ))
+        }
+
+        workManager.enqueue(uploadRequestBuilder.build())
+    }
+
     fun enableAutoSync() {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)

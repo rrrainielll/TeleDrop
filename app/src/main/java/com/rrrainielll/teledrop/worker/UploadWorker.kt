@@ -41,6 +41,7 @@ class UploadWorker(
         
         // Input Data Keys
         const val KEY_URIS = "key_uris" // Array of String (URIs)
+        const val KEY_URI_LIST_FILE = "key_uri_list_file" // String (Path to file containing URIs)
         const val KEY_IS_AUTO_SYNC = "key_is_auto_sync" // Boolean
     }
 
@@ -61,14 +62,32 @@ class UploadWorker(
         // 2. Identify files to upload
         val isAutoSync = inputData.getBoolean(KEY_IS_AUTO_SYNC, false)
         val inputUris = inputData.getStringArray(KEY_URIS)
+        val inputUriFile = inputData.getString(KEY_URI_LIST_FILE)
 
         val filesToUpload = mutableListOf<PendingFile>()
 
         if (!inputUris.isNullOrEmpty()) {
-            // Manual Upload
+            // Manual Upload (Array)
             inputUris.forEach { uriString ->
                 val uri = Uri.parse(uriString)
                 filesToUpload.add(PendingFile(uri))
+            }
+        } else if (!inputUriFile.isNullOrBlank()) {
+            // Manual Upload (File - for large selections)
+            try {
+                val file = File(inputUriFile)
+                if (file.exists()) {
+                    file.readLines().forEach { uriString ->
+                        if (uriString.isNotBlank()) {
+                            val uri = Uri.parse(uriString)
+                            filesToUpload.add(PendingFile(uri))
+                        }
+                    }
+                    // Cleanup list file
+                    file.delete()
+                }
+            } catch (e: Exception) {
+                Log.e("UploadWorker", "Error reading URI list file: ${e.message}")
             }
         } else if (isAutoSync) {
             // Auto Sync Scan
