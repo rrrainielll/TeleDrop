@@ -39,10 +39,23 @@ class SetupViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
-                // Verify Token
+                // Verify Token (Logic extracted to verifyToken, but kept here for "Connect" flow consistency or call verifyToken?)
+                // To keep it simple, we'll just check again or rely on the state.
+                // But verifyAndSave is "Commit".
+                
                 val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "getMe")
                 val meResponse = apiService.getMe(url)
-                if (!meResponse.isSuccessful) {
+                
+                if (meResponse.isSuccessful && meResponse.body()?.ok == true) {
+                    val botUser = meResponse.body()?.result
+                    val username = botUser?.username
+                    
+                    if (username != null) {
+                        _uiState.value = _uiState.value.copy(botUsername = username)
+                        // Save username if verifying
+                        settingsManager.saveBotUsername(username)
+                    }
+                } else {
                     _uiState.value = _uiState.value.copy(isLoading = false, error = "Invalid Bot Token")
                     return@launch
                 }
@@ -59,6 +72,24 @@ class SetupViewModel(
             }
         }
     }
+    
+    fun fetchBotUsername() {
+        val token = _uiState.value.botToken.trim()
+        if (token.isBlank()) return
+
+        viewModelScope.launch {
+            try {
+                 val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "getMe")
+                 val meResponse = apiService.getMe(url)
+                 if (meResponse.isSuccessful && meResponse.body()?.ok == true) {
+                     val botUser = meResponse.body()?.result
+                     _uiState.value = _uiState.value.copy(botUsername = botUser?.username)
+                 }
+            } catch (e: Exception) {
+                // Silent failure or log
+            }
+        }
+    }
 
     fun autoDetectChatId() {
         val token = _uiState.value.botToken.trim()
@@ -70,6 +101,11 @@ class SetupViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
+                // Determine if we need to fetch bot info first? 
+                // Currently autoDetectChatId is for getting updates.
+                // We might want to ensure we have the username here too if possible, but getUpdates doesn't return it.
+                // Ignoring for now.
+                
                 val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "getUpdates")
                 val updatesCalls = apiService.getUpdates(url)
                 if (updatesCalls.isSuccessful) {
@@ -106,7 +142,8 @@ data class SetupUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val infoMessage: String? = null,
-    val isSuccess: Boolean = false
+    val isSuccess: Boolean = false,
+    val botUsername: String? = null
 )
 
 class SetupViewModelFactory(

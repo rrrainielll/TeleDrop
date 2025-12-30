@@ -17,12 +17,48 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val workManager = WorkManager.getInstance(application)
 
+    private val settingsManager = com.rrrainielll.teledrop.data.prefs.SettingsManager(application)
+    val botTokenFlow = settingsManager.botToken
+    val botUsernameFlow = settingsManager.botUsername
+
     // Observe work status
     val workStatus = workManager.getWorkInfosByTagFlow("sync_work")
+    
+    init {
+        viewModelScope.launch {
+            settingsManager.botToken.collect { token ->
+                if (!token.isNullOrBlank()) {
+                    val currentUsername = settingsManager.botUsername.first()
+                    if (currentUsername.isNullOrBlank()) {
+                        fetchBotUsername(token)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun fetchBotUsername(token: String) {
+        try {
+            val app = getApplication<com.rrrainielll.teledrop.TeleDropApp>()
+            val url = com.rrrainielll.teledrop.data.api.buildTelegramUrl(token, "getMe")
+            val response = app.apiService.getMe(url)
+            if (response.isSuccessful && response.body()?.ok == true) {
+                val user = response.body()?.result
+                if (user?.username != null) {
+                    settingsManager.saveBotUsername(user.username)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     fun triggerSync() {
         val constraints = Constraints.Builder()

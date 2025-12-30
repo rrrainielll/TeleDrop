@@ -16,10 +16,12 @@ class SettingsManager(private val context: Context) {
     companion object {
         private val BOT_TOKEN = stringPreferencesKey("bot_token")
         private val CHAT_ID = stringPreferencesKey("chat_id")
+        private val BOT_USERNAME = stringPreferencesKey("bot_username")
     }
 
     val botToken: Flow<String?> = context.dataStore.data.map { it[BOT_TOKEN] }
     val chatId: Flow<String?> = context.dataStore.data.map { it[CHAT_ID] }
+    val botUsername: Flow<String?> = context.dataStore.data.map { it[BOT_USERNAME] }
 
     // Check if configuration is complete
     val isConfigured: Flow<Boolean> = context.dataStore.data.map {
@@ -32,5 +34,9 @@ class SettingsManager(private val context: Context) {
 
     suspend fun saveChatId(id: String) {
         context.dataStore.edit { it[CHAT_ID] = id }
+    }
+    
+    suspend fun saveBotUsername(username: String) {
+        context.dataStore.edit { it[BOT_USERNAME] = username }
     }
 }

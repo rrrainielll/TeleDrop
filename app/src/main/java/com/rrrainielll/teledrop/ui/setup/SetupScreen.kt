@@ -1,6 +1,7 @@
 package com.rrrainielll.teledrop.ui.setup
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,9 +20,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -88,6 +92,7 @@ fun SetupScreen(
     
     val uiState by viewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
+    val uriHandler = LocalUriHandler.current
     var showTutorial by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.isSuccess) {
@@ -135,11 +140,11 @@ fun SetupScreen(
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
+                        Image(
                             painter = painterResource(id = R.drawable.ic_launcher_background),
                             contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = Color.Unspecified
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
                         )
                     }
                     
@@ -175,13 +180,43 @@ fun SetupScreen(
 
             OutlinedTextField(
                 value = uiState.botToken,
-                onValueChange = viewModel::onTokenChanged,
+                onValueChange = { 
+                    viewModel.onTokenChanged(it)
+                    // Simple "debounce": try to fetch if it looks like a token length
+                    if (it.length > 20) viewModel.fetchBotUsername()
+                },
                 label = { Text("Bot Token") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                shape = MaterialTheme.shapes.extraLarge
+                shape = MaterialTheme.shapes.extraLarge,
+                trailingIcon = {
+                     if (uiState.botUsername != null) {
+                        Icon(Icons.Default.Check, contentDescription = "Valid", tint = MaterialTheme.colorScheme.primary)
+                     }
+                }
             )
+            
+            // "Open Bot" Button
+             AnimatedVisibility(visible = uiState.botUsername != null) {
+                 Button(
+                     onClick = { 
+                         uiState.botUsername?.let { username ->
+                             uriHandler.openUri("https://t.me/$username") 
+                         }
+                     },
+                     modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
+                     shape = MaterialTheme.shapes.large,
+                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                     )
+                 ) {
+                     Text("Open @${uiState.botUsername}")
+                     Spacer(modifier = Modifier.width(8.dp))
+                     Icon(painter = painterResource(id = R.drawable.ic_launcher_foreground), contentDescription = null, modifier = Modifier.size(16.dp)) // distinct icon if possible
+                 }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 

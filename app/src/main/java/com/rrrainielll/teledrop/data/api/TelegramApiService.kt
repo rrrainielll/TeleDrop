@@ -14,7 +14,7 @@ import retrofit2.http.Url
 interface TelegramApiService {
 
     @GET
-    suspend fun getMe(@Url url: String): Response<ResponseBody>
+    suspend fun getMe(@Url url: String): Response<GetMeResponse>
 
     @GET
     suspend fun getUpdates(
@@ -62,6 +62,11 @@ data class GetUpdatesResponse(
     val result: List<UpdateResult>
 )
 
+data class GetMeResponse(
+    val ok: Boolean,
+    val result: User
+)
+
 data class UpdateResult(
     val update_id: Int,
     val message: Message?
@@ -77,7 +82,8 @@ data class Message(
 data class User(
     val id: Long,
     val is_bot: Boolean,
-    val first_name: String
+    val first_name: String,
+    val username: String?
 )
 
 data class Chat(

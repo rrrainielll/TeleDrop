@@ -20,11 +20,13 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -56,7 +58,6 @@ import androidx.work.WorkInfo
 import coil.compose.AsyncImage
 import com.rrrainielll.teledrop.R
 import com.rrrainielll.teledrop.ui.components.SquircleProgressIndicator
-import com.rrrainielll.teledrop.ui.components.WavyProgressIndicator
 import com.rrrainielll.teledrop.ui.folder.FolderSelectionScreen
 import com.rrrainielll.teledrop.ui.folder.FolderViewModel
 
@@ -69,7 +70,29 @@ fun HomeScreen(
     onManageFolders: () -> Unit
 ) {
     // Observing Flow from ViewModel
+    // Observing Flow from ViewModel
     val workInfos by viewModel.workStatus.collectAsState(initial = emptyList())
+    val botUsername by viewModel.botUsernameFlow.collectAsState(initial = null)
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val botToken by viewModel.botTokenFlow.collectAsState(initial = null)
+    
+    // We need the username. Since we didn't save it in SettingsManager yet, let's just make a quick network call or 
+    // better, just update SettingsManager in next step.
+    // However, for this turn, I will assume we can get it or just link to the bot if we have the username.
+    // Wait, the user wants it on Home Screen. 
+    // I I will implement a local state for username, fetching it via a simple coroutine in LaunchedEffect.
+    // This is a bit hacky but avoids refactoring SettingsManager right this second.
+    // Actually, I can't easily fetch it without the API service in the UI. 
+    // Let's rely on a helper or just add a "Open Bot" button that tries to open via a generic intent? 
+    // No, `tg://resolve?domain=` needs username.
+    // Okay, I will fallback to: Update SettingsManager is the Right Way.
+    
+    // BUT, I can't do multiple file edits in one turn if they are dependent?
+    // I can. I will edit SettingsManager, then SetupViewModel, then HomeViewModel.
+    // But I'm already editing HomeScreen.
+    // Let's pause HomeScreen edit and do the data layer first.
+    // Discarding this edit.
+
     
     val isSyncing = workInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
     val lastWork = workInfos.find { it.state == WorkInfo.State.RUNNING } ?: workInfos.firstOrNull()
@@ -108,9 +131,11 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-
+                    // Top Bar Area Removed
+                    Spacer(modifier = Modifier.height(24.dp))
                     
                     // App Icon/Logo
+
 
                     
                     // Enhanced Status Card
@@ -298,26 +323,7 @@ fun HomeScreen(
                                     Spacer(modifier = Modifier.height(16.dp))
                                 }
 
-                                if (total > 0) {
-                                    val linearProgress by animateFloatAsState(
-                                        targetValue = progressValue,
-                                        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 400f),
-                                        label = "Linear Progress"
-                                    )
-                                    WavyProgressIndicator(
-                                        progress = linearProgress,
-                                        modifier = Modifier.fillMaxWidth().height(24.dp),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    )
-                                } else {
-                                    WavyProgressIndicator(
-                                        progress = 0f,
-                                        modifier = Modifier.fillMaxWidth().height(24.dp),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                                    )
-                                }
+                                // Progress bar removed as per user request
                             }
                         } else {
                                 Column(
@@ -481,6 +487,34 @@ fun HomeScreen(
                                 style = MaterialTheme.typography.labelLarge,
                                 fontSize = MaterialTheme.typography.titleMedium.fontSize
                             )
+                        }
+
+                        // Open Bot Button
+                        if (!botUsername.isNullOrBlank()) {
+                            OutlinedButton(
+                                onClick = {
+                                    uriHandler.openUri("https://t.me/$botUsername")
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp),
+                                shape = MaterialTheme.shapes.extraLarge,
+                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Send,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    "Open @$botUsername",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontSize = MaterialTheme.typography.titleMedium.fontSize
+                                )
+                            }
                         }
                     }
                 }
