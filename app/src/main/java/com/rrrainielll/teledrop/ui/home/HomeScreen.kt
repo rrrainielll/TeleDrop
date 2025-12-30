@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -444,50 +443,7 @@ fun HomeScreen(
                             )
                         }
                         
-                        // New Photo Picker Integration
-                        val maxItems = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                             android.provider.MediaStore.getPickImagesMaxLimit()
-                        } else {
-                             100 // Fallback for older versions
-                        }
-                        
-                        val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-                            contract = androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(maxItems)
-                        ) { uris ->
-                            if (uris.isNotEmpty()) {
-                                viewModel.uploadSelectedMedia(uris)
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                photoPickerLauncher.launch(
-                                    androidx.activity.result.PickVisualMediaRequest(
-                                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                                    )
-                                )
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            shape = MaterialTheme.shapes.extraLarge,
-                            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.tertiary,
-                                contentColor = MaterialTheme.colorScheme.onTertiary
-                            )
-                        ) {
-                            Icon(
-                                Icons.Default.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Select from Photos",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontSize = MaterialTheme.typography.titleMedium.fontSize
-                            )
-                        }
+// Photo Picker Removed as per user request
 
                         // Open Bot Button
                         if (!botUsername.isNullOrBlank()) {
