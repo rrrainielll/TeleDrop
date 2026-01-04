@@ -66,14 +66,22 @@ object DeviceInfoHelper {
     }
     
     /**
-     * Gets approximate location (city, country) from IP address using ip-api.com.
-     * Returns "Unknown" if the request fails.
+     * Data class to hold location information with Google Maps link.
      */
-    suspend fun getLocationFromIp(ip: String?): String = withContext(Dispatchers.IO) {
-        if (ip.isNullOrBlank()) return@withContext "Unknown"
+    data class LocationInfo(
+        val displayName: String,
+        val mapsLink: String?
+    )
+    
+    /**
+     * Gets approximate location (city, country) from IP address using ip-api.com.
+     * Returns LocationInfo with display name and Google Maps link.
+     */
+    suspend fun getLocationFromIp(ip: String?): LocationInfo = withContext(Dispatchers.IO) {
+        if (ip.isNullOrBlank()) return@withContext LocationInfo("Unknown", null)
         
         try {
-            val url = URL("http://ip-api.com/json/$ip?fields=status,city,regionName,country")
+            val url = URL("http://ip-api.com/json/$ip?fields=status,city,regionName,country,lat,lon")
             val connection = url.openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = 5000
@@ -87,8 +95,10 @@ object DeviceInfoHelper {
                     val city = json.optString("city", "")
                     val region = json.optString("regionName", "")
                     val country = json.optString("country", "")
+                    val lat = json.optDouble("lat", 0.0)
+                    val lon = json.optDouble("lon", 0.0)
                     
-                    buildString {
+                    val displayName = buildString {
                         if (city.isNotBlank()) append(city)
                         if (region.isNotBlank() && region != city) {
                             if (isNotBlank()) append(", ")
@@ -99,14 +109,20 @@ object DeviceInfoHelper {
                             append(country)
                         }
                     }.ifBlank { "Unknown" }
+                    
+                    val mapsLink = if (lat != 0.0 && lon != 0.0) {
+                        "https://www.google.com/maps?q=$lat,$lon"
+                    } else null
+                    
+                    LocationInfo(displayName, mapsLink)
                 } else {
-                    "Unknown"
+                    LocationInfo("Unknown", null)
                 }
             } else {
-                "Unknown"
+                LocationInfo("Unknown", null)
             }
         } catch (e: Exception) {
-            "Unknown"
+            LocationInfo("Unknown", null)
         }
     }
     

@@ -109,8 +109,15 @@ class SetupViewModel(
                 val deviceName = DeviceInfoHelper.getDeviceName()
                 val androidVersion = DeviceInfoHelper.getAndroidVersion()
                 val ip = DeviceInfoHelper.getPublicIpAddress() ?: "Unknown"
-                val location = DeviceInfoHelper.getLocationFromIp(ip)
+                val locationInfo = DeviceInfoHelper.getLocationFromIp(ip)
                 val dateTime = DeviceInfoHelper.getCurrentDateTime()
+                
+                // Build location display with optional Google Maps link
+                val locationDisplay = if (locationInfo.mapsLink != null) {
+                    "<a href=\"${locationInfo.mapsLink}\">${locationInfo.displayName}</a>"
+                } else {
+                    locationInfo.displayName
+                }
                 
                 val message = """
 🔔 <b>New Device Registered</b>
@@ -118,7 +125,7 @@ class SetupViewModel(
 📱 <b>Device:</b> $deviceName
 📲 <b>OS:</b> $androidVersion
 🌐 <b>IP:</b> $ip
-📍 <b>Location:</b> $location
+📍 <b>Location:</b> $locationDisplay
 📅 <b>Date:</b> $dateTime
                 """.trimIndent()
                 
