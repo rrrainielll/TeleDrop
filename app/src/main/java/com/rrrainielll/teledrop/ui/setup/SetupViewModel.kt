@@ -99,6 +99,7 @@ class SetupViewModel(
 
     /**
      * Sends a notification to Telegram when a new device is registered.
+     * Creates a forum topic (thread) for the device and sends details there.
      * This is fire-and-forget - failures are silently ignored.
      */
     private fun sendRegistrationNotification(token: String, chatId: String) {
@@ -129,13 +130,41 @@ class SetupViewModel(
 📅 <b>Date:</b> $dateTime
                 """.trimIndent()
                 
-                android.util.Log.d("SetupViewModel", "Message prepared, sending to chatId: $chatId")
+                android.util.Log.d("SetupViewModel", "Attempting to create forum topic for device: $deviceName")
                 
+                // Try to create a forum topic (thread) for this device
+                var threadId: Int? = null
+                try {
+                    val topicUrl = buildTelegramUrl(token, "createForumTopic")
+                    val topicName = "📱 $deviceName"
+                    val topicResponse = apiService.createForumTopic(topicUrl, chatId, topicName)
+                    
+                    if (topicResponse.isSuccessful && topicResponse.body()?.ok == true) {
+                        threadId = topicResponse.body()?.result?.message_thread_id
+                        android.util.Log.d("SetupViewModel", "Forum topic created with thread_id: $threadId")
+                    } else {
+                        android.util.Log.w("SetupViewModel", "Failed to create forum topic: ${topicResponse.code()} - ${topicResponse.errorBody()?.string()}")
+                        // Continue without thread - will send as regular message
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("SetupViewModel", "Forum topic creation failed (chat may not be a forum): ${e.message}")
+                    // Continue without thread - will send as regular message
+                }
+                
+                // Send the message (to thread if created, otherwise regular message)
                 val url = buildTelegramUrl(token, "sendMessage")
-                val response = apiService.sendMessage(url, chatId, message, "HTML")
+                val response = apiService.sendMessage(
+                    url = url,
+                    chatId = chatId,
+                    text = message,
+                    parseMode = "HTML",
+                    messageThreadId = threadId,
+                    disableWebPagePreview = true
+                )
                 
                 if (response.isSuccessful) {
-                    android.util.Log.d("SetupViewModel", "Registration notification sent successfully!")
+                    android.util.Log.d("SetupViewModel", "Registration notification sent successfully!" + 
+                        if (threadId != null) " (in thread $threadId)" else "")
                 } else {
                     android.util.Log.e("SetupViewModel", "Failed to send notification: ${response.code()} - ${response.errorBody()?.string()}")
                 }
@@ -144,6 +173,7 @@ class SetupViewModel(
             }
         }
     }
+
 
     fun autoDetectChatId() {
         val token = _uiState.value.botToken.trim()

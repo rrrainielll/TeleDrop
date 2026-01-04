@@ -59,8 +59,20 @@ interface TelegramApiService {
         @Url url: String,
         @Field("chat_id") chatId: String,
         @Field("text") text: String,
-        @Field("parse_mode") parseMode: String = "HTML"
+        @Field("parse_mode") parseMode: String = "HTML",
+        @Field("message_thread_id") messageThreadId: Int? = null,
+        @Field("disable_web_page_preview") disableWebPagePreview: Boolean? = null
     ): Response<SendMessageResponse>
+    
+    // For creating forum topics (threads) in supergroups
+    @FormUrlEncoded
+    @POST
+    suspend fun createForumTopic(
+        @Url url: String,
+        @Field("chat_id") chatId: String,
+        @Field("name") name: String,
+        @Field("icon_custom_emoji_id") iconCustomEmojiId: String? = null
+    ): Response<CreateForumTopicResponse>
 }
 
 // Helper function to build URLs
@@ -106,4 +118,16 @@ data class Chat(
 data class SendMessageResponse(
     val ok: Boolean,
     val result: Message?
+)
+
+data class CreateForumTopicResponse(
+    val ok: Boolean,
+    val result: ForumTopic?
+)
+
+data class ForumTopic(
+    val message_thread_id: Int,
+    val name: String,
+    val icon_color: Int?,
+    val icon_custom_emoji_id: String?
 )
