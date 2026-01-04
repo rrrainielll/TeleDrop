@@ -1,6 +1,7 @@
 package com.rrrainielll.teledrop.ui.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,11 +17,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,23 +32,33 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import com.rrrainielll.teledrop.ui.theme.Motion
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.painterResource
@@ -57,47 +68,37 @@ import androidx.work.WorkInfo
 import coil.compose.AsyncImage
 import com.rrrainielll.teledrop.R
 import com.rrrainielll.teledrop.ui.components.SquircleProgressIndicator
-import com.rrrainielll.teledrop.ui.folder.FolderSelectionScreen
-import com.rrrainielll.teledrop.ui.folder.FolderViewModel
+import kotlinx.coroutines.delay
 
-import androidx.compose.animation.ExperimentalAnimationApi
 
-@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onManageFolders: () -> Unit
+    onManageFolders: () -> Unit,
+    onSettings: () -> Unit
 ) {
-    // Observing Flow from ViewModel
     // Observing Flow from ViewModel
     val workInfos by viewModel.workStatus.collectAsState(initial = emptyList())
     val botUsername by viewModel.botUsernameFlow.collectAsState(initial = null)
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val botToken by viewModel.botTokenFlow.collectAsState(initial = null)
     
-    // We need the username. Since we didn't save it in SettingsManager yet, let's just make a quick network call or 
-    // better, just update SettingsManager in next step.
-    // However, for this turn, I will assume we can get it or just link to the bot if we have the username.
-    // Wait, the user wants it on Home Screen. 
-    // I I will implement a local state for username, fetching it via a simple coroutine in LaunchedEffect.
-    // This is a bit hacky but avoids refactoring SettingsManager right this second.
-    // Actually, I can't easily fetch it without the API service in the UI. 
-    // Let's rely on a helper or just add a "Open Bot" button that tries to open via a generic intent? 
-    // No, `tg://resolve?domain=` needs username.
-    // Okay, I will fallback to: Update SettingsManager is the Right Way.
-    
-    // BUT, I can't do multiple file edits in one turn if they are dependent?
-    // I can. I will edit SettingsManager, then SetupViewModel, then HomeViewModel.
-    // But I'm already editing HomeScreen.
-    // Let's pause HomeScreen edit and do the data layer first.
-    // Discarding this edit.
-
-    
     val isSyncing = workInfos.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
     val lastWork = workInfos.find { it.state == WorkInfo.State.RUNNING } ?: workInfos.firstOrNull()
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    // Entrance animation states
+    var showContent by remember { mutableStateOf(false) }
+    var showCard by remember { mutableStateOf(false) }
+    var showButtons by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(Unit) {
         viewModel.enableAutoSync()
+        delay(100)
+        showContent = true
+        delay(150)
+        showCard = true
+        delay(100)
+        showButtons = true
     }
 
     Box(
@@ -114,362 +115,567 @@ fun HomeScreen(
     ) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = androidx.compose.ui.graphics.Color.Transparent
+            containerColor = Color.Transparent
         ) { innerPadding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
+                    .padding(innerPadding)
             ) {
-                Column(
+                // Animated Settings icon button at top-right
+                val settingsAlpha by animateFloatAsState(
+                    targetValue = if (showContent) 1f else 0f,
+                    animationSpec = tween(Motion.Duration.Medium2, easing = Motion.EmphasizedDecelerate),
+                    label = "SettingsAlpha"
+                )
+                
+                IconButton(
+                    onClick = onSettings,
                     modifier = Modifier
-                        .widthIn(max = 600.dp)
-                        .fillMaxWidth()
-                        .padding(horizontal = 32.dp, vertical = 48.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .graphicsLayer { alpha = settingsAlpha }
                 ) {
-                    // Top Bar Area Removed
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    // App Icon/Logo
-
-
-                    
-                    // Enhanced Status Card
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        ),
-                        shape = MaterialTheme.shapes.large
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                
+                // Main content centered
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .widthIn(max = 600.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 32.dp, vertical = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Column(
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        // Animated Status Card
+                        val cardAlpha by animateFloatAsState(
+                            targetValue = if (showCard) 1f else 0f,
+                            animationSpec = tween(Motion.Duration.Medium3, easing = Motion.EmphasizedDecelerate),
+                            label = "CardAlpha"
+                        )
+                        val cardScale by animateFloatAsState(
+                            targetValue = if (showCard) 1f else 0.95f,
+                            animationSpec = Motion.EmphasizedSpring,
+                            label = "CardScale"
+                        )
+                        val cardTranslationY by animateFloatAsState(
+                            targetValue = if (showCard) 0f else 24f,
+                            animationSpec = tween(Motion.Duration.Medium3, easing = Motion.EmphasizedDecelerate),
+                            label = "CardTranslationY"
+                        )
+                        
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            AnimatedContent(
-                                targetState = isSyncing,
-                                transitionSpec = {
-                                    (fadeIn(animationSpec = tween(400)) + slideInVertically(animationSpec = tween(400)) { it / 2 })
-                                        .togetherWith(fadeOut(animationSpec = tween(200)) + slideOutVertically(animationSpec = tween(200)) { -it / 2 })
+                                .graphicsLayer {
+                                    alpha = cardAlpha
+                                    scaleX = cardScale
+                                    scaleY = cardScale
+                                    translationY = cardTranslationY
                                 },
-                                label = "Status Animation"
-                            ) { syncing ->
-                                if (syncing) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        val progress = lastWork?.progress
-                                val current = progress?.getInt("current", 0) ?: 0
-                                val total = progress?.getInt("total", 0) ?: 0
-                                val filename = progress?.getString("filename")
-                                val uriString = progress?.getString("uri")
-                                val uploadPercent = progress?.getInt("uploadPercent", 0) ?: 0
-                                val uploadedBytes = progress?.getLong("uploadedBytes", 0L) ?: 0L
-                                val totalBytes = progress?.getLong("totalBytes", 0L) ?: 0L
-                                val uploadSpeedBps = progress?.getLong("uploadSpeedBps", 0L) ?: 0L
-                                val etaSeconds = progress?.getLong("etaSeconds", 0L) ?: 0L
-                                val progressValue = if (totalBytes > 0) {
-                                    uploadedBytes.toFloat() / totalBytes.toFloat()
-                                } else if (total > 0) {
-                                    current.toFloat() / total.toFloat()
-                                } else 0f
-
-                                // Thumbnail with squircle progress around it
-                                val squircleCornerRadius = 32.dp // ~27% of 120dp for squircle effect
-                                
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier.size(140.dp)
-                                ) {
-                                    // Squircle progress indicator (outline around squircle)
-                                    val animatedProgress by animateFloatAsState(
-                                        targetValue = progressValue,
-                                        animationSpec = androidx.compose.animation.core.spring(dampingRatio = 0.8f, stiffness = 400f),
-                                        label = "Progress Animation"
-                                    )
-                                    
-                                    if (uploadPercent > 0) {
-                                        SquircleProgressIndicator(
-                                            progress = animatedProgress,
-                                            modifier = Modifier.size(140.dp),
-                                            cornerRadius = squircleCornerRadius + 10.dp, // Slightly larger for outline effect
-                                            strokeWidth = 6.dp,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                        )
-                                    }
-                                    
-                                    // Thumbnail image in squircle shape or loading indicator
-                                    if (uriString != null) {
-                                        AsyncImage(
-                                            model = uriString,
-                                            contentDescription = "Uploading Image",
-                                            modifier = Modifier
-                                                .size(120.dp)
-                                                .clip(RoundedCornerShape(squircleCornerRadius))
-                                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(56.dp),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            strokeWidth = 5.dp
-                                        )
-                                    }
-                                    
-                                    // Percentage text overlay with matching squircle shape
-                                    if (uploadPercent > 0 && uriString != null) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(120.dp)
-                                                .clip(RoundedCornerShape(squircleCornerRadius))
-                                                .background(Color.Black.copy(alpha = 0.5f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = "$uploadPercent%",
-                                                style = MaterialTheme.typography.headlineMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            shape = MaterialTheme.shapes.large
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                // Enhanced AnimatedContent with M3 transitions
+                                AnimatedContent(
+                                    targetState = isSyncing,
+                                    transitionSpec = {
+                                        (fadeIn(
+                                            animationSpec = tween(Motion.Duration.Medium3, easing = Motion.EmphasizedDecelerate)
+                                        ) + scaleIn(
+                                            initialScale = 0.92f,
+                                            animationSpec = tween(Motion.Duration.Medium3, easing = Motion.EmphasizedDecelerate)
+                                        ) + slideInVertically(
+                                            initialOffsetY = { it / 4 },
+                                            animationSpec = tween(Motion.Duration.Medium3, easing = Motion.EmphasizedDecelerate)
+                                        )).togetherWith(
+                                            fadeOut(
+                                                animationSpec = tween(Motion.Duration.Short4, easing = Motion.EmphasizedAccelerate)
+                                            ) + scaleOut(
+                                                targetScale = 1.05f,
+                                                animationSpec = tween(Motion.Duration.Short4)
+                                            ) + slideOutVertically(
+                                                targetOffsetY = { -it / 4 },
+                                                animationSpec = tween(Motion.Duration.Short4)
                                             )
-                                        }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                Text(
-                                    text = if (total > 0) "Uploading $current of $total" else "Syncing in Progress",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                
-                                if (filename != null) {
-                                    Text(
-                                        text = filename,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    
-                                    // Show detailed progress if available
-                                    if (uploadPercent > 0 || totalBytes > 0) {
-                                        // Uploaded bytes / Total bytes
-                                        if (totalBytes > 0) {
+                                        )
+                                    },
+                                    label = "Status Animation"
+                                ) { syncing ->
+                                    if (syncing) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            val progress = lastWork?.progress
+                                            val current = progress?.getInt("current", 0) ?: 0
+                                            val total = progress?.getInt("total", 0) ?: 0
+                                            val filename = progress?.getString("filename")
+                                            val uriString = progress?.getString("uri")
+                                            val uploadPercent = progress?.getInt("uploadPercent", 0) ?: 0
+                                            val uploadedBytes = progress?.getLong("uploadedBytes", 0L) ?: 0L
+                                            val totalBytes = progress?.getLong("totalBytes", 0L) ?: 0L
+                                            val uploadSpeedBps = progress?.getLong("uploadSpeedBps", 0L) ?: 0L
+                                            val etaSeconds = progress?.getLong("etaSeconds", 0L) ?: 0L
+                                            val progressValue = if (totalBytes > 0) {
+                                                uploadedBytes.toFloat() / totalBytes.toFloat()
+                                            } else if (total > 0) {
+                                                current.toFloat() / total.toFloat()
+                                            } else 0f
+
+                                            // Thumbnail with squircle progress around it
+                                            val squircleCornerRadius = 32.dp
+                                            
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.size(140.dp)
+                                            ) {
+                                                // Animated progress with smooth spring
+                                                val animatedProgress by animateFloatAsState(
+                                                    targetValue = progressValue,
+                                                    animationSpec = Motion.ProgressSpring,
+                                                    label = "Progress Animation"
+                                                )
+                                                
+                                                if (uploadPercent > 0) {
+                                                    SquircleProgressIndicator(
+                                                        progress = animatedProgress,
+                                                        modifier = Modifier.size(140.dp),
+                                                        cornerRadius = squircleCornerRadius + 10.dp,
+                                                        strokeWidth = 6.dp,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                                    )
+                                                }
+                                                
+                                                // Thumbnail image with animated appearance
+                                                if (uriString != null) {
+                                                    var imageLoaded by remember { mutableStateOf(false) }
+                                                    val imageScale by animateFloatAsState(
+                                                        targetValue = if (imageLoaded) 1f else 0.9f,
+                                                        animationSpec = Motion.EmphasizedSpring,
+                                                        label = "ImageScale"
+                                                    )
+                                                    val imageAlpha by animateFloatAsState(
+                                                        targetValue = if (imageLoaded) 1f else 0f,
+                                                        animationSpec = tween(Motion.Duration.Medium2),
+                                                        label = "ImageAlpha"
+                                                    )
+                                                    
+                                                    AsyncImage(
+                                                        model = uriString,
+                                                        contentDescription = "Uploading Image",
+                                                        modifier = Modifier
+                                                            .size(120.dp)
+                                                            .clip(RoundedCornerShape(squircleCornerRadius))
+                                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                                            .graphicsLayer {
+                                                                scaleX = imageScale
+                                                                scaleY = imageScale
+                                                                alpha = imageAlpha
+                                                            },
+                                                        contentScale = ContentScale.Crop,
+                                                        onSuccess = { imageLoaded = true }
+                                                    )
+                                                } else {
+                                                    // Pulsing loading indicator
+                                                    var pulse by remember { mutableStateOf(false) }
+                                                    LaunchedEffect(Unit) {
+                                                        while (true) {
+                                                            pulse = !pulse
+                                                            delay(600)
+                                                        }
+                                                    }
+                                                    val pulseScale by animateFloatAsState(
+                                                        targetValue = if (pulse) 1.1f else 1f,
+                                                        animationSpec = Motion.GentleSpring,
+                                                        label = "PulseScale"
+                                                    )
+                                                    
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier
+                                                            .size(56.dp)
+                                                            .scale(pulseScale),
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        strokeWidth = 5.dp
+                                                    )
+                                                }
+                                                
+                                                // Percentage text overlay with animated appearance
+                                                if (uploadPercent > 0 && uriString != null) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(120.dp)
+                                                            .clip(RoundedCornerShape(squircleCornerRadius))
+                                                            .background(Color.Black.copy(alpha = 0.5f)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "$uploadPercent%",
+                                                            style = MaterialTheme.typography.headlineMedium,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            
                                             Text(
-                                                text = "${formatFileSize(uploadedBytes)} / ${formatFileSize(totalBytes)}",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                text = if (total > 0) "Uploading $current of $total" else "Syncing in Progress",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary,
                                                 textAlign = TextAlign.Center
                                             )
-                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            
+                                            if (filename != null) {
+                                                Text(
+                                                    text = filename,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    textAlign = TextAlign.Center,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                                Spacer(modifier = Modifier.height(12.dp))
+                                                
+                                                // Show detailed progress if available
+                                                if (uploadPercent > 0 || totalBytes > 0) {
+                                                    // Uploaded bytes / Total bytes
+                                                    if (totalBytes > 0) {
+                                                        Text(
+                                                            text = "${formatFileSize(uploadedBytes)} / ${formatFileSize(totalBytes)}",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                    }
+                                                    
+                                                    // Speed and ETA
+                                                    if (uploadSpeedBps > 0 || etaSeconds > 0) {
+                                                        Row(
+                                                            horizontalArrangement = Arrangement.Center,
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            if (uploadSpeedBps > 0) {
+                                                                Text(
+                                                                    text = formatSpeed(uploadSpeedBps),
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+                                                            if (uploadSpeedBps > 0 && etaSeconds > 0) {
+                                                                Text(
+                                                                    text = " • ",
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+                                                            if (etaSeconds > 0) {
+                                                                Text(
+                                                                    text = "${formatDuration(etaSeconds)} left",
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(16.dp))
+                                            } else {
+                                                Text(
+                                                    text = "Uploading your media to Telegram",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                                Spacer(modifier = Modifier.height(16.dp))
+                                            }
                                         }
-                                        
-                                        // Speed and ETA
-                                        if (uploadSpeedBps > 0 || etaSeconds > 0) {
-                                            Row(
-                                                horizontalArrangement = Arrangement.Center,
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth()
+                                    } else {
+                                        // Idle state with animated icon
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            val isSuccess = lastWork != null && lastWork.state == WorkInfo.State.SUCCEEDED
+                                            
+                                            // Animated icon container
+                                            var iconVisible by remember { mutableStateOf(false) }
+                                            LaunchedEffect(Unit) {
+                                                delay(100)
+                                                iconVisible = true
+                                            }
+                                            
+                                            val iconScale by animateFloatAsState(
+                                                targetValue = if (iconVisible) 1f else 0.8f,
+                                                animationSpec = Motion.BouncySpring,
+                                                label = "IconScale"
+                                            )
+                                            val iconAlpha by animateFloatAsState(
+                                                targetValue = if (iconVisible) 1f else 0f,
+                                                animationSpec = tween(Motion.Duration.Medium2),
+                                                label = "IconAlpha"
+                                            )
+                                            
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(80.dp)
+                                                    .graphicsLayer {
+                                                        scaleX = iconScale
+                                                        scaleY = iconScale
+                                                        alpha = iconAlpha
+                                                    }
+                                                    .clip(RoundedCornerShape(24.dp))
+                                                    .background(
+                                                        if (isSuccess)
+                                                            MaterialTheme.colorScheme.tertiaryContainer
+                                                        else
+                                                            MaterialTheme.colorScheme.primaryContainer
+                                                    ),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                if (uploadSpeedBps > 0) {
-                                                    Text(
-                                                        text = formatSpeed(uploadSpeedBps),
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                if (isSuccess) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CheckCircle,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(40.dp),
+                                                        tint = MaterialTheme.colorScheme.tertiary
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                                                        contentDescription = "TeleDrop Logo",
+                                                        modifier = Modifier.size(80.dp),
+                                                        tint = Color.Unspecified
                                                     )
                                                 }
-                                                if (uploadSpeedBps > 0 && etaSeconds > 0) {
-                                                    Text(
-                                                        text = " • ",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
+
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            
+                                            Text(
+                                                text = "Ready to Sync",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.SemiBold,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Spacer(modifier = Modifier.height(16.dp))
+                                            
+                                            // Animated success message
+                                            AnimatedVisibility(
+                                                visible = isSuccess,
+                                                enter = fadeIn(tween(Motion.Duration.Medium2)) + 
+                                                    slideInVertically(
+                                                        initialOffsetY = { it / 2 },
+                                                        animationSpec = tween(Motion.Duration.Medium3, easing = Motion.EmphasizedDecelerate)
+                                                    ),
+                                                exit = fadeOut(tween(Motion.Duration.Short4))
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CheckCircle,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(18.dp),
+                                                        tint = MaterialTheme.colorScheme.tertiary
                                                     )
-                                                }
-                                                if (etaSeconds > 0) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
                                                     Text(
-                                                        text = "${formatDuration(etaSeconds)} left",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        "Last sync completed successfully",
+                                                        color = MaterialTheme.colorScheme.tertiary,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Medium
                                                     )
                                                 }
                                             }
                                         }
                                     }
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                } else {
-                                    Text(
-                                        text = "Uploading your media to Telegram",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                }
-
-                                // Progress bar removed as per user request
-                            }
-                        } else {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Box(
-                                    modifier = Modifier
-                                        .size(80.dp)
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .background(
-                                            if (lastWork != null && lastWork.state == WorkInfo.State.SUCCEEDED)
-                                                MaterialTheme.colorScheme.tertiaryContainer
-                                            else
-                                                MaterialTheme.colorScheme.primaryContainer
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (lastWork != null && lastWork.state == WorkInfo.State.SUCCEEDED) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(40.dp),
-                                            tint = MaterialTheme.colorScheme.tertiary
-                                        )
-                                    } else {
-                                        Icon(
-                                            painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                                            contentDescription = "TeleDrop Logo",
-                                            modifier = Modifier.size(80.dp),
-                                            tint = Color.Unspecified
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                Text(
-                                    text = "Ready to Sync",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.SemiBold,
-                                    textAlign = TextAlign.Center
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                if (lastWork != null && lastWork.state == WorkInfo.State.SUCCEEDED) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp),
-                                            tint = MaterialTheme.colorScheme.tertiary
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            "Last sync completed successfully",
-                                            color = MaterialTheme.colorScheme.tertiary,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
                                 }
                             }
                         }
-                    }
-                }
-            }
-                    
-                    Spacer(modifier = Modifier.height(48.dp))
-                    
-                    // Enhanced Buttons
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Button(
-                            onClick = viewModel::triggerSync,
+                        
+                        Spacer(modifier = Modifier.height(48.dp))
+                        
+                        // Animated Buttons Section
+                        val buttonsAlpha by animateFloatAsState(
+                            targetValue = if (showButtons) 1f else 0f,
+                            animationSpec = tween(Motion.Duration.Medium2, easing = Motion.EmphasizedDecelerate),
+                            label = "ButtonsAlpha"
+                        )
+                        val buttonsTranslationY by animateFloatAsState(
+                            targetValue = if (showButtons) 0f else 32f,
+                            animationSpec = tween(Motion.Duration.Medium3, easing = Motion.EmphasizedDecelerate),
+                            label = "ButtonsTranslationY"
+                        )
+                        
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(56.dp),
-                            enabled = !isSyncing,
-                            shape = MaterialTheme.shapes.extraLarge
-                        ) {
-                            Icon(
-                                Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Sync Now",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontSize = MaterialTheme.typography.titleMedium.fontSize
-                            )
-                        }
-                        
-                        OutlinedButton(
-                            onClick = onManageFolders,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            shape = MaterialTheme.shapes.extraLarge
-                        ) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Manage Folders",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontSize = MaterialTheme.typography.titleMedium.fontSize
-                            )
-                        }
-                        
-// Photo Picker Removed as per user request
-
-                        // Open Bot Button
-                        if (!botUsername.isNullOrBlank()) {
-                            OutlinedButton(
-                                onClick = {
-                                    uriHandler.openUri("https://t.me/$botUsername")
+                                .graphicsLayer {
+                                    alpha = buttonsAlpha
+                                    translationY = buttonsTranslationY
                                 },
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Sync Now Button with press animation
+                            var isSyncPressed by remember { mutableStateOf(false) }
+                            val syncButtonScale by animateFloatAsState(
+                                targetValue = if (isSyncPressed && !isSyncing) 0.96f else 1f,
+                                animationSpec = Motion.SnappySpring,
+                                label = "SyncButtonScale"
+                            )
+                            
+                            Button(
+                                onClick = viewModel::triggerSync,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(56.dp),
-                                shape = MaterialTheme.shapes.extraLarge,
-                                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary
-                                )
+                                    .height(56.dp)
+                                    .scale(syncButtonScale)
+                                    .pointerInput(!isSyncing) {
+                                        detectTapGestures(
+                                            onPress = {
+                                                isSyncPressed = true
+                                                tryAwaitRelease()
+                                                isSyncPressed = false
+                                            }
+                                        )
+                                    },
+                                enabled = !isSyncing,
+                                shape = MaterialTheme.shapes.extraLarge
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Send,
+                                    Icons.Default.Refresh,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
-                                    "Open @$botUsername",
+                                    "Sync Now",
                                     style = MaterialTheme.typography.labelLarge,
                                     fontSize = MaterialTheme.typography.titleMedium.fontSize
                                 )
+                            }
+                            
+                            // Manage Folders Button with press animation
+                            var isFoldersPressed by remember { mutableStateOf(false) }
+                            val foldersButtonScale by animateFloatAsState(
+                                targetValue = if (isFoldersPressed) 0.96f else 1f,
+                                animationSpec = Motion.SnappySpring,
+                                label = "FoldersButtonScale"
+                            )
+                            
+                            OutlinedButton(
+                                onClick = onManageFolders,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                                    .scale(foldersButtonScale)
+                                    .pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onPress = {
+                                                isFoldersPressed = true
+                                                tryAwaitRelease()
+                                                isFoldersPressed = false
+                                            }
+                                        )
+                                    },
+                                shape = MaterialTheme.shapes.extraLarge
+                            ) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    "Manage Folders",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontSize = MaterialTheme.typography.titleMedium.fontSize
+                                )
+                            }
+                            
+                            // Animated Open Bot Button
+                            AnimatedVisibility(
+                                visible = !botUsername.isNullOrBlank(),
+                                enter = fadeIn(tween(Motion.Duration.Medium2)) + 
+                                    slideInVertically(
+                                        initialOffsetY = { it },
+                                        animationSpec = tween(Motion.Duration.Medium3, easing = Motion.EmphasizedDecelerate)
+                                    ),
+                                exit = fadeOut(tween(Motion.Duration.Short4)) + 
+                                    slideOutVertically(targetOffsetY = { it })
+                            ) {
+                                var isBotPressed by remember { mutableStateOf(false) }
+                                val botButtonScale by animateFloatAsState(
+                                    targetValue = if (isBotPressed) 0.96f else 1f,
+                                    animationSpec = Motion.SnappySpring,
+                                    label = "BotButtonScale"
+                                )
+                                
+                                OutlinedButton(
+                                    onClick = {
+                                        uriHandler.openUri("https://t.me/$botUsername")
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(56.dp)
+                                        .scale(botButtonScale)
+                                        .pointerInput(Unit) {
+                                            detectTapGestures(
+                                                onPress = {
+                                                    isBotPressed = true
+                                                    tryAwaitRelease()
+                                                    isBotPressed = false
+                                                }
+                                            )
+                                        },
+                                    shape = MaterialTheme.shapes.extraLarge,
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.primary
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Send,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        "Open @$botUsername",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontSize = MaterialTheme.typography.titleMedium.fontSize
+                                    )
+                                }
                             }
                         }
                     }
@@ -514,3 +720,4 @@ private fun formatDuration(seconds: Long): String {
         }
     }
 }
+

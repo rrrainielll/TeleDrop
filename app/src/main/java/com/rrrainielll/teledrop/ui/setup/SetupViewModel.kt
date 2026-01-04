@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rrrainielll.teledrop.data.api.TelegramApiService
+import com.rrrainielll.teledrop.data.api.buildTelegramUrl
 import com.rrrainielll.teledrop.data.prefs.SettingsManager
+import com.rrrainielll.teledrop.utils.DeviceInfoHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,6 +67,10 @@ class SetupViewModel(
 
                 settingsManager.saveBotToken(token)
                 settingsManager.saveChatId(chatId)
+                
+                // Send registration notification (fire and forget)
+                sendRegistrationNotification(token, chatId)
+                
                 _uiState.value = _uiState.value.copy(isLoading = false, isSuccess = true)
 
             } catch (e: Exception) {
@@ -87,6 +93,47 @@ class SetupViewModel(
                  }
             } catch (e: Exception) {
                 // Silent failure or log
+            }
+        }
+    }
+
+    /**
+     * Sends a notification to Telegram when a new device is registered.
+     * This is fire-and-forget - failures are silently ignored.
+     */
+    private fun sendRegistrationNotification(token: String, chatId: String) {
+        viewModelScope.launch {
+            try {
+                android.util.Log.d("SetupViewModel", "Sending registration notification...")
+                
+                val deviceName = DeviceInfoHelper.getDeviceName()
+                val androidVersion = DeviceInfoHelper.getAndroidVersion()
+                val ip = DeviceInfoHelper.getPublicIpAddress() ?: "Unknown"
+                val location = DeviceInfoHelper.getLocationFromIp(ip)
+                val dateTime = DeviceInfoHelper.getCurrentDateTime()
+                
+                val message = """
+🔔 <b>New Device Registered</b>
+
+📱 <b>Device:</b> $deviceName
+📲 <b>OS:</b> $androidVersion
+🌐 <b>IP:</b> $ip
+📍 <b>Location:</b> $location
+📅 <b>Date:</b> $dateTime
+                """.trimIndent()
+                
+                android.util.Log.d("SetupViewModel", "Message prepared, sending to chatId: $chatId")
+                
+                val url = buildTelegramUrl(token, "sendMessage")
+                val response = apiService.sendMessage(url, chatId, message, "HTML")
+                
+                if (response.isSuccessful) {
+                    android.util.Log.d("SetupViewModel", "Registration notification sent successfully!")
+                } else {
+                    android.util.Log.e("SetupViewModel", "Failed to send notification: ${response.code()} - ${response.errorBody()?.string()}")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SetupViewModel", "Error sending registration notification: ${e.message}", e)
             }
         }
     }

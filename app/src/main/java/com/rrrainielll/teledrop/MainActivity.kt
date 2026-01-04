@@ -94,7 +94,8 @@ class MainActivity : ComponentActivity() {
                             val homeViewModel = ViewModelProvider(this)[com.rrrainielll.teledrop.ui.home.HomeViewModel::class.java]
                             HomeScreen(
                                 viewModel = homeViewModel,
-                                onManageFolders = { currentScreen = Screen.Folders }
+                                onManageFolders = { currentScreen = Screen.Folders },
+                                onSettings = { currentScreen = Screen.Settings }
                             )
                         }
                         Screen.Folders -> {
@@ -125,6 +126,18 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
+                        Screen.Settings -> {
+                            val settingsViewModel = ViewModelProvider(this)[com.rrrainielll.teledrop.ui.settings.SettingsViewModel::class.java]
+                            
+                            androidx.activity.compose.BackHandler {
+                                currentScreen = Screen.Home
+                            }
+                            
+                            com.rrrainielll.teledrop.ui.settings.SettingsScreen(
+                                viewModel = settingsViewModel,
+                                onBack = { currentScreen = Screen.Home }
+                            )
+                        }
                     }
                 }
             }
@@ -133,5 +146,5 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen {
-    Setup, Home, Folders
+    Setup, Home, Folders, Settings
 }

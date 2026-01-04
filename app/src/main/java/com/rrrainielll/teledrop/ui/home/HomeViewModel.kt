@@ -61,83 +61,98 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun triggerSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+        viewModelScope.launch {
+            val wifiOnly = settingsManager.wifiOnly.first()
+            val networkType = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
             
-        val syncRequest = OneTimeWorkRequestBuilder<UploadWorker>()
-            .setInputData(workDataOf(UploadWorker.KEY_IS_AUTO_SYNC to true))
-            .setConstraints(constraints)
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .addTag("sync_work")
-            .build()
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(networkType)
+                .build()
+                
+            val syncRequest = OneTimeWorkRequestBuilder<UploadWorker>()
+                .setInputData(workDataOf(UploadWorker.KEY_IS_AUTO_SYNC to true))
+                .setConstraints(constraints)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .addTag("sync_work")
+                .build()
 
-        workManager.enqueue(syncRequest)
+            workManager.enqueue(syncRequest)
+        }
     }
 
     fun uploadSelectedMedia(uris: List<android.net.Uri>) {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+        viewModelScope.launch {
+            val wifiOnly = settingsManager.wifiOnly.first()
+            val networkType = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
             
-        val uploadRequestBuilder = OneTimeWorkRequestBuilder<UploadWorker>()
-            .setConstraints(constraints)
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .addTag("manual_upload_work")
-            .addTag("sync_work")
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(networkType)
+                .build()
+                
+            val uploadRequestBuilder = OneTimeWorkRequestBuilder<UploadWorker>()
+                .setConstraints(constraints)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .addTag("manual_upload_work")
+                .addTag("sync_work")
 
-        // Data limit is 10KB. If we have many URIs, pass via file.
-        // Assuming ~100 chars per URI, 50 URIs = 5KB. Safety limit: 30.
-        if (uris.size > 30) {
-            try {
-                val cacheDir = getApplication<Application>().cacheDir
-                val file = java.io.File.createTempFile("selected_media", ".txt", cacheDir)
-                file.printWriter().use { out ->
-                    uris.forEach { out.println(it.toString()) }
+            // Data limit is 10KB. If we have many URIs, pass via file.
+            // Assuming ~100 chars per URI, 50 URIs = 5KB. Safety limit: 30.
+            if (uris.size > 30) {
+                try {
+                    val cacheDir = getApplication<Application>().cacheDir
+                    val file = java.io.File.createTempFile("selected_media", ".txt", cacheDir)
+                    file.printWriter().use { out ->
+                        uris.forEach { out.println(it.toString()) }
+                    }
+                    
+                    uploadRequestBuilder.setInputData(workDataOf(
+                        UploadWorker.KEY_URI_LIST_FILE to file.absolutePath,
+                        UploadWorker.KEY_IS_AUTO_SYNC to false
+                    ))
+                } catch (e: Exception) {
+                    
+                    // Fallback to array if file creation fails (risky but better than nothing)
+                    val uriStrings = uris.map { it.toString() }.toTypedArray()
+                    uploadRequestBuilder.setInputData(workDataOf(
+                        UploadWorker.KEY_URIS to uriStrings,
+                        UploadWorker.KEY_IS_AUTO_SYNC to false
+                    ))
                 }
-                
-                uploadRequestBuilder.setInputData(workDataOf(
-                    UploadWorker.KEY_URI_LIST_FILE to file.absolutePath,
-                    UploadWorker.KEY_IS_AUTO_SYNC to false
-                ))
-            } catch (e: Exception) {
-                
-                // Fallback to array if file creation fails (risky but better than nothing)
+            } else {
                 val uriStrings = uris.map { it.toString() }.toTypedArray()
                 uploadRequestBuilder.setInputData(workDataOf(
                     UploadWorker.KEY_URIS to uriStrings,
                     UploadWorker.KEY_IS_AUTO_SYNC to false
                 ))
             }
-        } else {
-            val uriStrings = uris.map { it.toString() }.toTypedArray()
-            uploadRequestBuilder.setInputData(workDataOf(
-                UploadWorker.KEY_URIS to uriStrings,
-                UploadWorker.KEY_IS_AUTO_SYNC to false
-            ))
-        }
 
-        workManager.enqueue(uploadRequestBuilder.build())
+            workManager.enqueue(uploadRequestBuilder.build())
+        }
     }
 
     fun enableAutoSync() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .addContentUriTrigger(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true)
-            .addContentUriTrigger(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
-            .build()
+        viewModelScope.launch {
+            val wifiOnly = settingsManager.wifiOnly.first()
+            val networkType = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
             
-        val autoSyncRequest = OneTimeWorkRequestBuilder<UploadWorker>()
-            .setInputData(workDataOf(UploadWorker.KEY_IS_AUTO_SYNC to true))
-            .setConstraints(constraints)
-            .addTag("auto_sync_observer")
-            .build()
-            
-        // Use KEEP to avoid replacing if already running/scheduled
-        workManager.enqueueUniqueWork(
-            "auto_sync_observer",
-            androidx.work.ExistingWorkPolicy.KEEP,
-            autoSyncRequest
-        )
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(networkType)
+                .addContentUriTrigger(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true)
+                .addContentUriTrigger(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
+                .build()
+                
+            val autoSyncRequest = OneTimeWorkRequestBuilder<UploadWorker>()
+                .setInputData(workDataOf(UploadWorker.KEY_IS_AUTO_SYNC to true))
+                .setConstraints(constraints)
+                .addTag("auto_sync_observer")
+                .build()
+                
+            // Use KEEP to avoid replacing if already running/scheduled
+            workManager.enqueueUniqueWork(
+                "auto_sync_observer",
+                androidx.work.ExistingWorkPolicy.KEEP,
+                autoSyncRequest
+            )
+        }
     }
 }

@@ -3,6 +3,8 @@ package com.rrrainielll.teledrop.data.api
 import okhttp3.MultipartBody
 import okhttp3.ResponseBody
 import retrofit2.Response
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
@@ -49,6 +51,16 @@ interface TelegramApiService {
         @Part document: MultipartBody.Part,
         @Part("caption") caption: okhttp3.RequestBody? = null
     ): Response<ResponseBody>
+    
+    // For sending text messages (notifications)
+    @FormUrlEncoded
+    @POST
+    suspend fun sendMessage(
+        @Url url: String,
+        @Field("chat_id") chatId: String,
+        @Field("text") text: String,
+        @Field("parse_mode") parseMode: String = "HTML"
+    ): Response<SendMessageResponse>
 }
 
 // Helper function to build URLs
@@ -89,4 +101,9 @@ data class User(
 data class Chat(
     val id: Long,
     val type: String
+)
+
+data class SendMessageResponse(
+    val ok: Boolean,
+    val result: Message?
 )

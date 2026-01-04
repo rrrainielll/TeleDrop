@@ -7,6 +7,13 @@ TeleDrop is an Android application designed to synchronize photos and videos to 
 *   **Telegram Integration**: Connects to specific Telegram accounts via a user-created Bot.
 *   **Media Synchronization**: Supports the upload of both photo and video formats.
 *   **Automated Configuration**: Includes a "Find Me" feature to automatically detect Chat IDs, simplifying the setup process.
+*   **Settings Screen**: Configurable backup and sync preferences accessible via the gear icon.
+*   **Flexible Backup Scheduling**: Choose from multiple automatic backup options:
+    *   Manual (on-demand only)
+    *   When photos are added (instant sync via content observer)
+    *   Every 15 minutes, 30 minutes, 1 hour, 6 hours, or daily
+*   **Network Preferences**: Option to restrict uploads to WiFi-only connections to save mobile data.
+*   **Device Registration Notification**: Sends a Telegram notification when a new device is set up, including device name, IP address, location, and timestamp.
 *   **Quick Settings Integration**: Provides a Quick Settings tile for immediate synchronization access from the system notification shade.
 *   **Home Screen Widget**: Allows for synchronization initiation directly from the home screen.
 *   **Background Processing**: Utilizes Android WorkManager to ensure reliable file uploads, even when the application is not in the foreground.
@@ -39,11 +46,15 @@ TeleDrop is an Android application designed to synchronize photos and videos to 
     *   Input the **Bot Token** in the provided field.
     *   Initiate a conversation with the created bot on Telegram by sending `/start`.
     *   In the TeleDrop application, select **"Find Me"** to verify the connection and retrieve the Chat ID.
+    *   Upon successful setup, a notification will be sent to your Telegram with device information.
 4.  **Permissions**: Grant the requested media access permissions to enable file synchronization.
 
 ## Usage Guide
 
 *   **Manual Synchronization**: Launch the application and select the "Connect" or Sync option.
+*   **Settings**: Tap the gear icon (⚙️) in the top-right corner to access:
+    *   **Backup Schedule**: Configure automatic backup frequency or enable instant sync when new photos are added.
+    *   **Network Preference**: Toggle WiFi-only mode to prevent uploads over mobile data.
 *   **Quick Settings Tile**: Access the notification shade, edit the active tiles, and add the **TeleDrop Sync** tile. This allows for immediate synchronization without opening the main application.
 *   **Widget**: Add the **Sync Widget** to the home screen via the system's widget selection menu.
 
